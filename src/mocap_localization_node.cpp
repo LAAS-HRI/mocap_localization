@@ -187,8 +187,8 @@ private:
             tfListener_.lookupTransform(footprint_frame_id, global_frame_id, ros::Time(0), tfBaseInMap);
         
         tf::Transform delta;
-        delta = pose * tfBaseInMap.inverse();
-        offsetTf_ = delta * offsetTf_.inverse();
+        delta = pose * tfBaseInMap;
+        offsetTf_ = delta * offsetTf_;
     };
 
 };
