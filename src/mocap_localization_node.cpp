@@ -75,17 +75,31 @@ private:
     {
         try
         {
+            std::string footprint_frame_id, global_frame_id, odom_frame_id, world_frame_id;
             tf::StampedTransform tfOdom2Footprint;
             tf::StampedTransform tfWorld2Map;
 
-            if (tfListener_.canTransform("/world", "/map",  ros::Time(0))) {
-                tfListener_.lookupTransform("/world", "/map", ros::Time(0), tfWorld2Map);
+            if (!node_.getParam("/global_frame_id", global_frame_id)) {
+                global_frame_id="/map";
+            }
+            if (!node_.getParam("/footprint_frame_id", footprint_frame_id)) {
+                footprint_frame_id="/base_footprint";
+            }
+            if (!node_.getParam("/odom_frame_id", odom_frame_id)) {
+                odom_frame_id="/odom";
+            }
+            if (!node_.getParam("/world_frame_id", world_frame_id)) {
+                world_frame_id="/world";
+            }
+
+            if (tfListener_.canTransform(world_frame_id, global_frame_id,  ros::Time(0))) {
+                tfListener_.lookupTransform(world_frame_id, global_frame_id, ros::Time(0), tfWorld2Map);
                 tfWorld2Map_.setOrigin(tfWorld2Map.getOrigin());
                 tfWorld2Map_.setRotation(tfWorld2Map.getRotation());
             }
-
-            if (tfListener_.canTransform("/odom", "/base_footprint", ros::Time(0))) {
-                tfListener_.lookupTransform("/odom", "/base_footprint", ros::Time(0), tfOdom2Footprint);
+            
+            if (tfListener_.canTransform(odom_frame_id, footprint_frame_id, ros::Time(0))) {
+                tfListener_.lookupTransform(odom_frame_id, footprint_frame_id, ros::Time(0), tfOdom2Footprint);
                 tfOdom2Footprint_.setOrigin(tfOdom2Footprint.getOrigin());
                 tfOdom2Footprint_.setRotation(tfOdom2Footprint.getRotation());
             }
@@ -160,18 +174,17 @@ private:
         tf::poseMsgToTF(msg->pose.pose, pose);
         tf::StampedTransform tfOdom2Base;
         tf::StampedTransform tfBaseInMap;
-        std::string base_frame_id;
-        std::string global_frame_id;
+        std::string footprint_frame_id, global_frame_id;
         tfOdom2Base.setIdentity();
         
         if (!node_.getParam("/global_frame_id", global_frame_id)){
             global_frame_id="/map";
         }
-        if (!node_.getParam("/base_frame_id", base_frame_id)){
-            base_frame_id="/base_footprint";
+        if (!node_.getParam("/footprint_frame_id", footprint_frame_id)) {
+            footprint_frame_id="/base_footprint";
         }
-        if (tfListener_.canTransform(base_frame_id, global_frame_id, ros::Time(0)))
-            tfListener_.lookupTransform(base_frame_id, global_frame_id, ros::Time(0), tfBaseInMap);
+        if (tfListener_.canTransform(footprint_frame_id, global_frame_id, ros::Time(0)))
+            tfListener_.lookupTransform(footprint_frame_id, global_frame_id, ros::Time(0), tfBaseInMap);
         
         tf::Transform delta;
         delta = pose * tfBaseInMap.inverse();
