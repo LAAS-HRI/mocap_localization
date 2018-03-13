@@ -1,0 +1,95 @@
+#include <ros/ros.h>
+#include <string>
+#include <cstdlib>
+#include "../include/optitrack/or_pose_estimator_state.h"
+#include <tf/tf.h>
+#include <std_msgs/Time.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_listener.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/Point.h>
+
+using namespace std;
+
+class MocapLocalization
+{
+private:
+    ros::NodeHandle node_;
+    tf::TransformListener tfListener_;
+    tf::TransformBroadcaster tfBroadcaster_;
+    ros::Publisher pose_pub_;
+    ros::Subscriber mocap_sub_;
+    geometry_msgs::PoseWithCovariance currentPose_;
+    tf::MessageFilter<geometry_msgs::PoseWithCovariance> *tfFilter_;
+    message_filters::Subscriber<geometry_msgs::PoseWithCovariance> pose_sub_;
+public:
+    MocapLocalization(ros::NodeHandle node) : tfListener_(), tfBroadcaster_()
+    {
+        node_=node;
+        //Mocap subscriber
+        mocap_sub_ = node.subscribe("/optitrack/bodies/mummer", 10, &mocapCallback);
+        //Pose publisher
+        pose_pub_ = node_.advertise<geometry_msgs::PoseWithCovarianceStamped>("/mocap_localization/mummer_base_pose_raw", 10);
+        //TF filter
+        pose_sub_.subscribe(node_, "/mocap_localization/mummer_base_pose_raw", 10);
+        tfFilter_ = new tf::MessageFilter<geometry_msgs::PoseWithCovarianceStamped>(pose_sub_, tfListener_, "odom"  , 10);
+        tfFilter_->registerCallback( boost::bind(&MocapLocalization:update, this, _1) );
+    }
+private:
+    void update(const boost::shared_ptr<const geometry_msgs::PoseWithCovarianceStamped>& pose_ptr)
+    {
+        tf::StampedTransform tf_Odom2Base;
+        tf::Transform tf_Map2Base;
+        try
+        {
+            tfListener_.lookupTransform("/odom", "/base_link", ros::Time(0), tf_Odom2Base);
+            transform_map2base.setOrigin(tf::Vector3(currentPose_.pose.position));
+            transform_map2base.setRotation(tf::Quaternion(currentPose_.pose.orientation));
+        }
+        catch (tf::TransformException &ex) 
+        {
+          ROS_ERROR("[mocap_localization] Error occur : %s\n", ex.what());
+        }
+    }
+    void mocapCallback(const optitrack::or_pose_estimator_state::ConstPtr &msg)
+    {
+        if(!msg->pos.empty())
+        {
+            //If we receive data from mocap system we update the pose
+            //Setting position
+            currentPose_.pose.position.x=msg->pos[0].x+offset_x;
+            currentPose_.pose.position.y=msg->pos[0].x+offset_y;
+            currentPose_.pose.position.z=msg->pos[0].z;
+            //Setting orientation
+            currentPose_.pose.orientation.x=msg->pos[0].qx;
+            currentPose_.pose.orientation.y=msg->pos[0].qy;
+            currentPose_.pose.orientation.z=msg->pos[0].qz;
+            currentPose_.pose.orientation.w=msg->pos[0].qw;
+            //Setting covariance
+            //TODO Fill covariance buffer
+        }
+        //Stamping the pose with covariance that will be used to filter tf
+        geometry_msgs::PoseWithCovarianceStamped temp_pose;
+        temp_pose.pose=currentPose_.pose;
+        temp_pose.header.frame_id="map";
+        temp_pose.header.stamp.secs=msg->pos[0].secs;
+        temp_pose.header.stamp.nsecs=msg->pos[0].nsecs;
+        //Publishing the pose to be used by update(..)
+        pose_pub_.publish(temp_pose);
+      }  
+    }
+    void offsetCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg)
+    {
+	    offset_x=msg->pose.pose.position.x-pose_x;
+	    offset_y=msg->pose.pose.position.y-pose_y;
+    }
+};
+
+int main(int argc, char** argv){
+  ros::init(argc, argv, "mocap_localization");
+  ros::NodeHandle node;
+  MocapLocalization mcl(node);
+  ros::spin();
+  return 0;
+};
