@@ -176,8 +176,6 @@ private:
         tf::Transform delta;
         delta = pose * tfBaseInMap.inverse();
         offsetTf_ = delta * offsetTf_.inverse();
-        ROS_INFO("[mocap_localization] Delta :");
-        ROS_INFO(offsetTf_);
     };
 
 };
