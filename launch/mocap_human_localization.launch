@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="mocap_localization" type="mocap_human_localization_node" name="mocap_human_localization_node" output="screen">
+    <rosparam command="load" file="$(find mocap_localization)/params/mocap_human_localization_params.yaml" />
+  </node>
+</launch>
