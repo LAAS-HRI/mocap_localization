@@ -1,0 +1,4 @@
+<launch>
+  <include file="$(find mocap_localization)/launch/mocap_localization.launch" />
+  <include file="$(find mocap_localization)/launch/mocap_human_localization.launch" />
+  </launch>
