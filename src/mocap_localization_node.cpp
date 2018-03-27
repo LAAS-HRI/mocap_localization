@@ -17,6 +17,15 @@
 #include <std_srvs/Empty.h>
 #include <naoqi_bridge_msgs/JointAnglesWithSpeed.h>
 
+#include <mocap_localization/MocapLocalizationConfig.h>
+
+#include <dynamic_reconfigure/client.h>
+#include <dynamic_reconfigure/server.h>
+#include <dynamic_reconfigure/ReconfigureRequest.h>
+#include <dynamic_reconfigure/ReconfigureResponse.h>
+#include <dynamic_reconfigure/DoubleParameter.h>
+#include <dynamic_reconfigure/Config.h>
+
 using namespace std;
 
 class MocapLocalization
@@ -43,13 +52,16 @@ private:
     tf::Transform tfWorld2Optitrack_;  // inverse of appart marker
     tf::Transform tfOptitrack2Footprint_; // robot marker
     tf::Transform tfMap2Odom_; // localization to compute
-    tf::Transform offsetTf_; // init offset
+    tf::Transform offsetBaseGT2BaseFootprint_; // init offset base_gt to base_footprint
+
+    dynamic_reconfigure::Server<mocap_localization::MocapLocalizationConfig> dynCfgServer;
+    //dynamic_reconfigure::Client<mocap_localization::MocapLocalizationConfig> dynCfgClient_;
 
 public:
-    MocapLocalization(ros::NodeHandle node) : tfListener_(),
-                                              tfBroadcaster_(),
-                                              node_(node)
-    {
+    MocapLocalization(ros::NodeHandle node)
+            : tfListener_(),
+              tfBroadcaster_(),
+              node_(node){
         //Subscribers
 
         reference_sub_ = node_.subscribe("/optitrack/bodies/reference", 10, &MocapLocalization::updateMocapOrigin,this);
@@ -65,7 +77,12 @@ public:
         tfWorld2Optitrack_.setIdentity();  // inverse of appart marker
         tfOptitrack2Footprint_.setIdentity(); // pepper marker
         tfMap2Odom_.setIdentity(); // localization to computes
-        offsetTf_.setIdentity(); // init offset
+        offsetBaseGT2BaseFootprint_.setIdentity(); // init offset
+
+        dynamic_reconfigure::Server<mocap_localization::MocapLocalizationConfig>::CallbackType f;
+
+        f = boost::bind(&MocapLocalization::onNewReconfigure, this, _1, _2);
+        dynCfgServer.setCallback(f);
 
         ROS_INFO("[mocap_localization] Motion capture localization ready");
     };
@@ -77,7 +94,6 @@ private:
         {
             std::string footprint_frame_id, global_frame_id, odom_frame_id, world_frame_id;
             tf::StampedTransform tfOdom2Footprint;
-            tf::StampedTransform tfWorld2Map;
 
             if (!node_.getParam("/global_frame_id", global_frame_id)) {
                 global_frame_id="/map";
@@ -91,27 +107,22 @@ private:
             if (!node_.getParam("/world_frame_id", world_frame_id)) {
                 world_frame_id="/world";
             }
-
-            if (tfListener_.canTransform(world_frame_id, global_frame_id,  ros::Time(0))) {
-                tfListener_.lookupTransform(world_frame_id, global_frame_id, ros::Time(0), tfWorld2Map);
-                tfWorld2Map_.setOrigin(tfWorld2Map.getOrigin());
-                tfWorld2Map_.setRotation(tfWorld2Map.getRotation());
-            }
             
             if (tfListener_.canTransform(odom_frame_id, footprint_frame_id, ros::Time(0))) {
                 tfListener_.lookupTransform(odom_frame_id, footprint_frame_id, ros::Time(0), tfOdom2Footprint);
                 tfOdom2Footprint_.setOrigin(tfOdom2Footprint.getOrigin());
                 tfOdom2Footprint_.setRotation(tfOdom2Footprint.getRotation());
             }
-            
+
+            tfMap2Odom_ = tfWorld2Map_.inverse() * tfWorld2Optitrack_ * tfOptitrack2Footprint_ * tfOdom2Footprint_.inverse();
+
+            tfBroadcaster_.sendTransform(tf::StampedTransform((tfWorld2Map_), ros::Time::now(), "world", "map"));
+
             tfBroadcaster_.sendTransform(tf::StampedTransform((tfOptitrack2Footprint_), ros::Time::now(), "optitrack", "base_footprint_ground_truth"));
             
             tfBroadcaster_.sendTransform(tf::StampedTransform((tfWorld2Optitrack_), ros::Time::now(), "world", "optitrack"));
 
-
-            tfMap2Odom_ = tfWorld2Map_.inverse() * tfWorld2Optitrack_ * tfOptitrack2Footprint_ * tfOdom2Footprint_.inverse();
-
-            tfBroadcaster_.sendTransform(tf::StampedTransform(tfMap2Odom_* offsetTf_, ros::Time::now(), "map", "odom"));
+            tfBroadcaster_.sendTransform(tf::StampedTransform(tfMap2Odom_ * offsetBaseGT2BaseFootprint_, ros::Time::now(), "map", "odom"));
             
         }
         catch (tf::TransformException &ex)
@@ -165,6 +176,7 @@ private:
 
             tfWorld2Optitrack_.setOrigin(tf_received.getOrigin());
             tfWorld2Optitrack_.setRotation(tf_received.getRotation());
+
         }
     };
 
@@ -186,10 +198,63 @@ private:
         if (tfListener_.canTransform(footprint_frame_id, global_frame_id, ros::Time(0)))
             tfListener_.lookupTransform(footprint_frame_id, global_frame_id, ros::Time(0), tfBaseInMap);
         
-        tf::Transform delta;
+        tf::Transform delta, offset;
         delta = pose * tfBaseInMap;
-        offsetTf_ = delta * offsetTf_;
+        offset = delta * offsetBaseGT2BaseFootprint_;
+
+        tf::Vector3 origin = offset.getOrigin();
+        tf::Matrix3x3 rotation(offset.getRotation());
+        double roll, pitch, yaw;
+//        mocap_localization::MocapLocalizationConfig config;
+//        config.world2map_x = origin.x();
+//        config.world2map_y = origin.y();
+//        config.world2map_z = origin.z();
+        rotation.getRPY(roll, pitch, yaw);
+//        config.world2map_roll = roll;
+//        config.world2map_pitch = pitch;
+//        config.world2map_yaw = yaw;
+        ROS_INFO("2D Pose estimate set 1");
+        dynamic_reconfigure::DoubleParameter gt2fX, gt2fY, gt2fZ, gt2fR, gt2fP, gt2fYaw;
+        dynamic_reconfigure::Config conf;
+        dynamic_reconfigure::ReconfigureRequest srv_req;
+        dynamic_reconfigure::ReconfigureResponse srv_resp;
+        gt2fX.name = "gt2footprint_x";
+        gt2fX.value = origin.x();
+        gt2fY.name = "gt2footprint_y";
+        gt2fY.value = origin.y();
+        gt2fZ.name = "gt2footprint_z";
+        gt2fZ.value = origin.z();
+        gt2fR.name = "gt2footprint_roll";
+        gt2fR.value = roll;
+        gt2fP.name = "gt2footprint_pitch";
+        gt2fP.value = pitch;
+        gt2fYaw.name = "gt2footprint_yaw";
+        gt2fYaw.value = yaw;
+        conf.doubles.push_back(gt2fX);
+        conf.doubles.push_back(gt2fY);
+        conf.doubles.push_back(gt2fZ);
+        conf.doubles.push_back(gt2fR);
+        conf.doubles.push_back(gt2fP);
+        conf.doubles.push_back(gt2fYaw);
+
+        srv_req.config = conf;
+        ros::service::call("/mocap_localization_node/set_parameters", srv_req, srv_resp);
+        //dynCfgClient_.setConfiguration(config);
+
+        ROS_INFO("2D Pose estimate set");
+
     };
+
+    void onNewReconfigure(mocap_localization::MocapLocalizationConfig &config, uint32_t level){
+        ROS_INFO("Reconfigured");
+        tfWorld2Map_.setOrigin(tf::Vector3(config.world2map_x, config.world2map_y, config.world2map_z));
+        tfWorld2Map_.setRotation(tf::createQuaternionFromRPY(config.world2map_roll, config.world2map_pitch, config.world2map_yaw));
+
+        offsetBaseGT2BaseFootprint_.setOrigin(tf::Vector3(config.gt2footprint_x, config.gt2footprint_y, config.gt2footprint_z));
+        offsetBaseGT2BaseFootprint_.setRotation(tf::createQuaternionFromRPY(config.gt2footprint_roll,
+                                                                    config.gt2footprint_pitch, config.gt2footprint_yaw));
+
+    }
 
 };
 
@@ -197,6 +262,9 @@ int main(int argc, char** argv){
   ros::init(argc, argv, "mocap_localization");
   ros::NodeHandle node;
   MocapLocalization mcl(node);
-  ros::spin();
+  ros::AsyncSpinner spinner(2);
+  spinner.start();
+//    ros::spin();
+  ros::waitForShutdown();
   return 0;
 };
