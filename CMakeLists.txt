@@ -138,7 +138,6 @@ include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 ## Declare a C++ executable
 add_executable(mocap_localization_node src/mocap_localization_node.cpp)
 add_executable(mocap_human_localization_node src/mocap_human_localization_node.cpp)
-add_executable(fake_localization src/fake_localization.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -147,7 +146,6 @@ add_executable(fake_localization src/fake_localization.cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(mocap_localization_node ${catkin_LIBRARIES} "-lnlopt -lm")
 target_link_libraries(mocap_human_localization_node ${catkin_LIBRARIES} "-lnlopt -lm")
-target_link_libraries(fake_localization ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 #############
 ## Install ##
