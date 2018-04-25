@@ -47,12 +47,15 @@ private:
     ros::Subscriber reference_sub_;
     ros::Timer loca_timer_;
 
+    tf::Transform tfChessboardImage2Footprint_, tfChessboardMocap2FootprintGt_;
+
     tf::Transform tfWorld2Map_; // provided by /tf (tf static broadcaster)
     tf::Transform tfOdom2Footprint_; // provided by /tf (robot state publisher)
     tf::Transform tfWorld2Optitrack_;  // inverse of appart marker
     tf::Transform tfOptitrack2Footprint_; // robot marker
     tf::Transform tfMap2Odom_; // localization to compute
     tf::Transform offsetBaseGT2BaseFootprint_; // init offset base_gt to base_footprint
+    tf::Transform tempOffset_;
 
     dynamic_reconfigure::Server<mocap_localization::MocapLocalizationConfig> dynCfgServer;
     //dynamic_reconfigure::Client<mocap_localization::MocapLocalizationConfig> dynCfgClient_;
@@ -64,7 +67,7 @@ public:
               node_(node){
         //Subscribers
 
-        reference_sub_ = node_.subscribe("/optitrack/bodies/reference", 10, &MocapLocalization::updateMocapOrigin,this);
+        reference_sub_ = node_.subscribe("/optitrack/bodies/world", 10, &MocapLocalization::updateMocapOrigin,this);
 
         pose_sub_ = node_.subscribe("/optitrack/bodies/robot", 10, &MocapLocalization::updateMocapPepperPose,this);
 
@@ -93,7 +96,7 @@ private:
         try
         {
             std::string footprint_frame_id, global_frame_id, odom_frame_id, world_frame_id;
-            tf::StampedTransform tfOdom2Footprint;
+            tf::StampedTransform tfOdom2Footprint, tfWorld2Map, tfChessboardImage2Footprint, tfChessboardMocap2FootprintGt, offsetBaseGT2BaseFootprint;
 
             if (!node_.getParam("/global_frame_id", global_frame_id)) {
                 global_frame_id="/map";
@@ -107,6 +110,23 @@ private:
             if (!node_.getParam("/world_frame_id", world_frame_id)) {
                 world_frame_id="/world";
             }
+
+//            if (tfListener_.canTransform("chessboard_image_frame", footprint_frame_id, ros::Time(0))) {
+//                tfListener_.lookupTransform("chessboard_image_frame", footprint_frame_id, ros::Time(0), tfChessboardImage2Footprint);
+//                tfChessboardImage2Footprint_.setOrigin(tfChessboardImage2Footprint.getOrigin());
+//                tfChessboardImage2Footprint_.setRotation(tfChessboardImage2Footprint.getRotation());
+//                ROS_INFO("chess2footprint %f %f %f", tfChessboardImage2Footprint_.getOrigin().x(), tfChessboardImage2Footprint_.getOrigin().y(), tfChessboardImage2Footprint_.getOrigin().z());
+//
+//                if (tfListener_.canTransform(world_frame_id, "base_footprint_ground_truth", ros::Time(0))) {
+//                    tfListener_.lookupTransform(world_frame_id, "base_footprint_ground_truth", ros::Time(0), tfChessboardMocap2FootprintGt);
+//                    tfChessboardMocap2FootprintGt_.setOrigin(tfChessboardMocap2FootprintGt.getOrigin());
+//                    tfChessboardMocap2FootprintGt_.setRotation(tfChessboardMocap2FootprintGt.getRotation());
+//                    ROS_INFO("chess2mocapGT %f %f %f", tfChessboardMocap2FootprintGt_.getOrigin().x(), tfChessboardMocap2FootprintGt_.getOrigin().y(), tfChessboardMocap2FootprintGt_.getOrigin().z());
+//                    tempOffset_ = tfChessboardMocap2FootprintGt_ * tfChessboardImage2Footprint_.inverse();
+//                    offsetBaseGT2BaseFootprint_.setOrigin(tempOffset_.getOrigin());
+//                }
+//
+//            }
             
             if (tfListener_.canTransform(odom_frame_id, footprint_frame_id, ros::Time(0))) {
                 tfListener_.lookupTransform(odom_frame_id, footprint_frame_id, ros::Time(0), tfOdom2Footprint);
@@ -114,15 +134,23 @@ private:
                 tfOdom2Footprint_.setRotation(tfOdom2Footprint.getRotation());
             }
 
+            if (tfListener_.canTransform(world_frame_id, global_frame_id, ros::Time(0))) {
+                tfListener_.lookupTransform(world_frame_id, global_frame_id, ros::Time(0), tfWorld2Map);
+                tfWorld2Map_.setOrigin(tfWorld2Map.getOrigin());
+                tfWorld2Map_.setRotation(tfWorld2Map.getRotation());
+            }
+
+            //ROS_INFO("%f %f %f", offsetBaseGT2BaseFootprint_.getOrigin().x(), offsetBaseGT2BaseFootprint_.getOrigin().y(), offsetBaseGT2BaseFootprint_.getOrigin().z());
+
             tfMap2Odom_ = tfWorld2Map_.inverse() * tfWorld2Optitrack_ * tfOptitrack2Footprint_ * tfOdom2Footprint_.inverse();
 
-            tfBroadcaster_.sendTransform(tf::StampedTransform((tfWorld2Map_), ros::Time::now(), "world", "map"));
+            //tfBroadcaster_.sendTransform(tf::StampedTransform((tfWorld2Map_), ros::Time::now(), "world", "map"));
 
             tfBroadcaster_.sendTransform(tf::StampedTransform((tfOptitrack2Footprint_), ros::Time::now(), "optitrack", "base_footprint_ground_truth"));
             
             tfBroadcaster_.sendTransform(tf::StampedTransform((tfWorld2Optitrack_), ros::Time::now(), "world", "optitrack"));
 
-            tfBroadcaster_.sendTransform(tf::StampedTransform(tfMap2Odom_ * offsetBaseGT2BaseFootprint_, ros::Time::now(), "map", "odom"));
+            tfBroadcaster_.sendTransform(tf::StampedTransform(tfMap2Odom_ * offsetBaseGT2BaseFootprint_.inverse(), ros::Time::now(), "map", "odom"));
             
         }
         catch (tf::TransformException &ex)
@@ -176,7 +204,6 @@ private:
 
             tfWorld2Optitrack_.setOrigin(tf_received.getOrigin());
             tfWorld2Optitrack_.setRotation(tf_received.getRotation());
-
         }
     };
 

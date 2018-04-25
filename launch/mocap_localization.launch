@@ -1,6 +1,6 @@
 <launch>
 
-<!--<node name="world2map_tf_publisher" pkg="tf" type="static_transform_publisher" args="-6,3383 -12,22365 -1.5 0 0 0 world map 20" />-->
+<node name="world2map_tf_publisher" pkg="tf" type="static_transform_publisher" args="-4.4681 -8.9 -1.005 0 0 0 world map 20" />
 
 <node name="mocap_localization_node" pkg="mocap_localization" type="mocap_localization_node" output="screen"/>
 
