@@ -73,7 +73,7 @@ public:
 
         offset_sub_ = node_.subscribe("/initialpose", 1, &MocapLocalization::initPoseReceived,this);
         
-        loca_timer_ = node_.createTimer(ros::Duration(0.2), &MocapLocalization::update,this);
+        loca_timer_ = node_.createTimer(ros::Duration(1/30.0), &MocapLocalization::update,this);
 
         tfWorld2Map_.setIdentity(); // provided by /tf (tf static broadcaster)
         tfOdom2Footprint_.setIdentity(); // provided by /tf (robot state publisher)

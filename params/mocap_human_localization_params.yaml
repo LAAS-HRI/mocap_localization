@@ -1,1 +1,1 @@
-optitrack_human_topic_names: {"person_01_torso": 1}  # "optitrack topic name": human_id
+optitrack_human_topic_names: {"person_0": "mocap_human-1"}#,"robot_head": "mocap_robot_head","chessboard_appart": "mocap_chessboard"}  # "optitrack topic name": human_id
